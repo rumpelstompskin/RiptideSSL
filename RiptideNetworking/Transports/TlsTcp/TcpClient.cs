@@ -6,11 +6,15 @@
 using System;
 using System.Linq;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using System.IO;
 
 namespace Riptide.Transports.TlsTcp
 {
-    /// <summary>A client which can connect to a <see cref="TcpServer"/>.</summary>
+    /// <summary>A client which can connect to a <see cref="TcpServer"/> using TLS.</summary>
     public class TcpClient : TcpPeer, IClient
     {
         /// <inheritdoc/>
@@ -23,12 +27,24 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>The connection to the server.</summary>
         private TcpConnection tcpConnection;
 
+        /// <summary>Which TLS protocol versions to allow.</summary>
+        public SslProtocols EnabledSslProtocols { get; set; } = SslProtocols.Tls12;
+
+        /// <summary>If true, uses strict certificate validation (recommended for production).</summary>
+        public bool ValidateServerCertificate { get; set; } = false;
+
+        /// <summary>Optional callback to validate the server certificate.</summary>
+        public RemoteCertificateValidationCallback ServerCertificateValidationCallback { get; set; }
+
+        /// <summary>Optional client certificates for mutual TLS (mTLS).</summary>
+        public X509CertificateCollection ClientCertificates { get; } = new X509CertificateCollection();
+
         /// <inheritdoc/>
-        /// <remarks>Expects the host address to consist of an IP and port, separated by a colon. For example: <c>127.0.0.1:7777</c>.</remarks>
+        /// <remarks>Expects the host address to consist of an IP/hostname and port, separated by a colon. For example: <c>127.0.0.1:7777</c>.</remarks>
         public bool Connect(string hostAddress, out Connection connection, out string connectError)
         {
-            connectError = $"Invalid host address '{hostAddress}'! IP and port should be separated by a colon, for example: '127.0.0.1:7777'.";
-            if (!ParseHostAddress(hostAddress, out IPAddress ip, out ushort port))
+            connectError = $"Invalid host address '{hostAddress}'! Host and port should be separated by a colon, for example: '127.0.0.1:7777'.";
+            if (!ParseHostAddress(hostAddress, out string host, out IPAddress ip, out ushort port))
             {
                 connection = null;
                 return false;
@@ -41,80 +57,105 @@ namespace Riptide.Transports.TlsTcp
                 ReceiveBufferSize = socketBufferSize,
                 NoDelay = true,
             };
-            
+
             try
             {
                 socket.Connect(remoteEndPoint); // TODO: do something about the fact that this is a blocking call
             }
             catch (SocketException)
             {
-                // The connection failed, but invoking the transports ConnectionFailed event from
-                // inside this method will cause problems, so we're just goint to eat the exception,
-                // call OnConnected(), and let Riptide detect that no connection was established.
+                connection = null;
+                ConnectionFailed?.Invoke(this, EventArgs.Empty);
+                return false;
             }
 
-            connection = tcpConnection = new TcpConnection(socket, remoteEndPoint, this);
-            OnConnected();
-            return true;
-        }
-
-        /// <summary>Parses <paramref name="hostAddress"/> into <paramref name="ip"/> and <paramref name="port"/>, if possible.</summary>
-        /// <param name="hostAddress">The host address to parse.</param>
-        /// <param name="ip">The retrieved IP.</param>
-        /// <param name="port">The retrieved port.</param>
-        /// <returns>Whether or not <paramref name="hostAddress"/> was in a valid format.</returns>
-        private bool ParseHostAddress(string hostAddress, out IPAddress ip, out ushort port)
-        {
-            string[] ipAndPort = hostAddress.Split(':');
-            string ipString = "";
-            string portString = "";
-            if (ipAndPort.Length > 2)
+            try
             {
-                // There was more than one ':' in the host address, might be IPv6
-                ipString = string.Join(":", ipAndPort.Take(ipAndPort.Length - 1));
-                portString = ipAndPort[ipAndPort.Length - 1];
-            }
-            else if (ipAndPort.Length == 2)
-            {
-                // IPv4
-                ipString = ipAndPort[0];
-                portString = ipAndPort[1];
-            }
+                var networkStream = new NetworkStream(socket, ownsSocket: false);
 
-            port = 0; // Need to make sure a value is assigned in case IP parsing fails
-            return IPAddress.TryParse(ipString, out ip) && ushort.TryParse(portString, out port);
+                RemoteCertificateValidationCallback cb =
+                    ServerCertificateValidationCallback ??
+                    ((sender, cert, chain, errors) => !ValidateServerCertificate || errors == SslPolicyErrors.None);
+
+                var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false, cb);
+
+                // Use the provided host for SNI / name validation. If host is an IP and you enable validation, SAN must include that IP.
+                sslStream.AuthenticateAsClient(host, ClientCertificates, EnabledSslProtocols, checkCertificateRevocation: false);
+
+                tcpConnection = new TcpConnection(socket, remoteEndPoint, this);
+                tcpConnection.SetStream(sslStream);
+                tcpConnection.StartReceiving();
+
+                connection = tcpConnection;
+                connectError = string.Empty;
+
+                Connected?.Invoke(this, EventArgs.Empty);
+                return true;
+            }
+            catch (Exception ex) when (ex is AuthenticationException || ex is IOException)
+            {
+                try { socket.Close(); } catch { }
+                connection = null;
+                ConnectionFailed?.Invoke(this, EventArgs.Empty);
+                connectError = ex.Message;
+                return false;
+            }
         }
 
         /// <inheritdoc/>
         public void Poll()
         {
-            if (tcpConnection != null)
-                tcpConnection.Receive();
+            tcpConnection?.Receive();
         }
 
         /// <inheritdoc/>
         public void Disconnect()
         {
-            socket.Close();
-            tcpConnection = null;
+            tcpConnection?.Close();
         }
 
-        /// <summary>Invokes the <see cref="Connected"/> event.</summary>
-        protected virtual void OnConnected()
+        /// <inheritdoc/>
+        public void Send(byte[] dataBuffer, int amount, Connection connection)
         {
-            Connected?.Invoke(this, EventArgs.Empty);
-        }
-
-        /// <summary>Invokes the <see cref="ConnectionFailed"/> event.</summary>
-        protected virtual void OnConnectionFailed()
-        {
-            ConnectionFailed?.Invoke(this, EventArgs.Empty);
+            if (connection is TcpConnection tcp)
+                tcp.Send(dataBuffer, amount);
         }
 
         /// <inheritdoc/>
         protected internal override void OnDataReceived(int amount, TcpConnection fromConnection)
         {
             DataReceived?.Invoke(this, new DataReceivedEventArgs(ReceiveBuffer, amount, fromConnection));
+        }
+
+        /// <summary>Parses "host:port" into host string, ip, and port.</summary>
+        private static bool ParseHostAddress(string hostAddress, out string host, out IPAddress ip, out ushort port)
+        {
+            host = null;
+            ip = null;
+            port = 0;
+
+            string[] addressParts = hostAddress.Split(':');
+            if (addressParts.Length != 2)
+                return false;
+
+            host = addressParts[0];
+
+            if (!ushort.TryParse(addressParts[1], out port))
+                return false;
+
+            // Try IP first; if hostname, resolve.
+            if (IPAddress.TryParse(host, out ip))
+                return true;
+
+            try
+            {
+                ip = Dns.GetHostAddresses(host).FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork || a.AddressFamily == AddressFamily.InterNetworkV6);
+                return ip != null;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

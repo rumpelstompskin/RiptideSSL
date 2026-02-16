@@ -4,13 +4,19 @@
 // https://github.com/RiptideNetworking/Riptide/blob/main/LICENSE.md
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading.Tasks;
+using System.IO;
 
 namespace Riptide.Transports.TlsTcp
 {
-    /// <summary>A server which can accept connections from <see cref="TcpClient"/>s.</summary>
+    /// <summary>A server which can accept TLS-wrapped connections from <see cref="TcpClient"/>s.</summary>
     public class TcpServer : TcpPeer, IServer
     {
         /// <inheritdoc/>
@@ -23,6 +29,18 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>The maximum number of pending connections to allow at any given time.</summary>
         public int MaxPendingConnections { get; private set; } = 5;
 
+        /// <summary>Server certificate used for TLS.</summary>
+        public X509Certificate ServerCertificate { get; set; }
+
+        /// <summary>Which TLS protocol versions to allow.</summary>
+        public SslProtocols EnabledSslProtocols { get; set; } = SslProtocols.Tls12;
+
+        /// <summary>Whether to require a client certificate (mTLS).</summary>
+        public bool RequireClientCertificate { get; set; } = false;
+
+        /// <summary>Optional validation callback for client certificates (mTLS).</summary>
+        public RemoteCertificateValidationCallback ClientCertificateValidationCallback { get; set; }
+
         /// <summary>Whether or not the server is running.</summary>
         private bool isRunning = false;
         /// <summary>The currently open connections, accessible by their endpoints.</summary>
@@ -32,9 +50,11 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>The IP address to bind the socket to.</summary>
         private readonly IPAddress listenAddress;
 
+        private readonly ConcurrentQueue<TcpConnection> authenticatedConnections = new ConcurrentQueue<TcpConnection>();
+
         /// <inheritdoc/>
         public TcpServer(int socketBufferSize = DefaultSocketBufferSize) : this(IPAddress.IPv6Any, socketBufferSize) { }
-        
+
         /// <summary>Initializes the transport, binding the socket to a specific IP address.</summary>
         /// <param name="listenAddress">The IP address to bind the socket to.</param>
         /// <param name="socketBufferSize">How big the socket's send and receive buffers should be.</param>
@@ -46,6 +66,9 @@ namespace Riptide.Transports.TlsTcp
         /// <inheritdoc/>
         public void Start(ushort port)
         {
+            if (ServerCertificate == null)
+                throw new InvalidOperationException("ServerCertificate must be set before starting the TLS server.");
+
             Port = port;
             connections = new Dictionary<IPEndPoint, TcpConnection>();
 
@@ -79,6 +102,21 @@ namespace Riptide.Transports.TlsTcp
                 return;
 
             Accept();
+
+            // Promote newly authenticated connections on the Poll thread (Unity main thread).
+            while (authenticatedConnections.TryDequeue(out TcpConnection c))
+            {
+                if (!connections.ContainsKey(c.RemoteEndPoint))
+                {
+                    connections.Add(c.RemoteEndPoint, c);
+                    OnConnected(c);
+                }
+                else
+                {
+                    c.Close();
+                }
+            }
+
             foreach (TcpConnection connection in connections.Values)
                 connection.Receive();
 
@@ -88,21 +126,58 @@ namespace Riptide.Transports.TlsTcp
             closedConnections.Clear();
         }
 
-        /// <summary>Accepts any pending connections.</summary>
+        /// <summary>Accepts any pending connections and performs TLS handshake on a background task.</summary>
         private void Accept()
         {
-            if (socket.Poll(0, SelectMode.SelectRead))
+            while (socket.Poll(0, SelectMode.SelectRead))
             {
                 Socket acceptedSocket = socket.Accept();
+                acceptedSocket.NoDelay = true;
                 IPEndPoint fromEndPoint = (IPEndPoint)acceptedSocket.RemoteEndPoint;
-                if (!connections.ContainsKey(fromEndPoint))
+
+                if (connections.ContainsKey(fromEndPoint))
                 {
-                    TcpConnection newConnection = new TcpConnection(acceptedSocket, fromEndPoint, this);
-                    connections.Add(fromEndPoint, newConnection);
-                    OnConnected(newConnection);
-                }
-                else
                     acceptedSocket.Close();
+                    continue;
+                }
+
+                // Handshake off-thread so Poll isn't blocked.
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var networkStream = new NetworkStream(acceptedSocket, ownsSocket: false);
+
+                        RemoteCertificateValidationCallback cb = (sender, cert, chain, errors) =>
+                        {
+                            if (!RequireClientCertificate)
+                                return true;
+
+                            if (ClientCertificateValidationCallback != null)
+                                return ClientCertificateValidationCallback(sender, cert, chain, errors);
+
+                            return errors == SslPolicyErrors.None;
+                        };
+
+                        var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false, cb);
+                        await sslStream.AuthenticateAsServerAsync(
+                            ServerCertificate,
+                            clientCertificateRequired: RequireClientCertificate,
+                            enabledSslProtocols: EnabledSslProtocols,
+                            checkCertificateRevocation: false
+                        ).ConfigureAwait(false);
+
+                        var conn = new TcpConnection(acceptedSocket, fromEndPoint, this);
+                        conn.SetStream(sslStream);
+                        conn.StartReceiving();
+
+                        authenticatedConnections.Enqueue(conn);
+                    }
+                    catch
+                    {
+                        try { acceptedSocket.Close(); } catch { }
+                    }
+                });
             }
         }
 
@@ -119,10 +194,10 @@ namespace Riptide.Transports.TlsTcp
         /// <inheritdoc/>
         public void Close(Connection connection)
         {
-            if (connection is TcpConnection tcpConnection)
+            if (connection is TcpConnection tcp && tcp != null)
             {
-                closedConnections.Add(tcpConnection.RemoteEndPoint);
-                tcpConnection.Close();
+                tcp.Close();
+                closedConnections.Add(tcp.RemoteEndPoint);
             }
         }
 
@@ -130,12 +205,16 @@ namespace Riptide.Transports.TlsTcp
         public void Shutdown()
         {
             StopListening();
-            connections.Clear();
+            if (connections != null)
+            {
+                foreach (var c in connections.Values)
+                    c.Close();
+                connections.Clear();
+            }
         }
 
         /// <summary>Invokes the <see cref="Connected"/> event.</summary>
-        /// <param name="connection">The successfully established connection.</param>
-        protected virtual void OnConnected(Connection connection)
+        private void OnConnected(TcpConnection connection)
         {
             Connected?.Invoke(this, new ConnectedEventArgs(connection));
         }
@@ -143,15 +222,16 @@ namespace Riptide.Transports.TlsTcp
         /// <inheritdoc/>
         protected internal override void OnDataReceived(int amount, TcpConnection fromConnection)
         {
-            if ((MessageHeader)(ReceiveBuffer[0] & Message.HeaderBitmask) == MessageHeader.Connect)
-            {
-                if (fromConnection.DidReceiveConnect)
-                    return;
-
-                fromConnection.DidReceiveConnect = true;
-            }
-
             DataReceived?.Invoke(this, new DataReceivedEventArgs(ReceiveBuffer, amount, fromConnection));
+        }
+
+        /// <inheritdoc/>
+        protected internal override void OnDisconnected(Connection connection, DisconnectReason reason)
+        {
+            base.OnDisconnected(connection, reason);
+
+            if (connection is TcpConnection tcp)
+                closedConnections.Add(tcp.RemoteEndPoint);
         }
     }
 }
