@@ -22,7 +22,7 @@ If looking to host and act as a client as well, use async to connect the client.
 pfx file must have private key.
 
 Example pfx creation
-```
+```bash
 openssl pkcs12 -export -legacy \
 -inkey yourdomain.key \
 -in yourdomain.pem \
