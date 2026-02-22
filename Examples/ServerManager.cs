@@ -1,7 +1,6 @@
 using Riptide;
 using Riptide.Transports.TlsTcp;
 using Riptide.Utils;
-using Sirenix.OdinInspector;
 using System;
 using System.IO;
 using System.Security.Cryptography.X509Certificates;
@@ -34,7 +33,6 @@ public class ServerManager : MonoBehaviour
 
     [Serializable] private class CertConfig { public string certificateFile = ""; public string password = ""; }
 
-    [Button, BoxGroup("Controls"), HorizontalGroup("Controls/Buttons")]
     public void StartTlsTcpServer()
     {
         if(!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -59,7 +57,6 @@ public class ServerManager : MonoBehaviour
         server.ClientDisconnected += OnClientDisconnected;
     }
 
-    [Button, HorizontalGroup("Controls/Buttons")]
     private void StartUdpServer()
     {
         if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -72,7 +69,6 @@ public class ServerManager : MonoBehaviour
         server.ClientDisconnected += OnClientDisconnected;
     }
 
-    [Button, HorizontalGroup("Controls/Buttons")]
     public void StopServer()
     {
         if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -179,3 +175,4 @@ public class ServerManager : MonoBehaviour
         }
     }
 }
+
