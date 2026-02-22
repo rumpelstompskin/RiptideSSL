@@ -10,7 +10,7 @@ TcpClient clientTransport = new TcpClient { ValidateServerCertificate = true, Ch
 client = new Client(clientTransport);
 ```
 config.json Example
-```
+```json
 {
     "certificateFile": "certfilename",
     "password": "certpw"
