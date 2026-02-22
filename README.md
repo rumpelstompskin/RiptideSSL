@@ -4,10 +4,17 @@ Encrypt your connection using certificates packaged in PKCS12.
 Example implementation in ServerManager.cs and ClientManager.cs
 
 ClientManager.cs
-```
+```csharp
 TcpClient clientTransport = new TcpClient { ValidateServerCertificate = true, CheckCertificateRevocation = true }; 
 // Development environment = false, Production = true
 client = new Client(clientTransport);
+```
+config.json Example
+```
+{
+    "certificateFile": "certfilename",
+    "password": "certpw"
+}
 ```
 
 ## Known quirks
