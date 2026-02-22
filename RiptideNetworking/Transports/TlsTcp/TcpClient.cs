@@ -33,6 +33,9 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>If true, uses strict certificate validation (recommended for production).</summary>
         public bool ValidateServerCertificate { get; set; } = false;
 
+        /// <summary>If true, check whether the certificate revocation list is checked during authentication</summary>
+        public bool CheckCertificateRevocation { get; set; } = false;
+
         /// <summary>Optional callback to validate the server certificate.</summary>
         public RemoteCertificateValidationCallback ServerCertificateValidationCallback { get; set; }
 
@@ -80,7 +83,7 @@ namespace Riptide.Transports.TlsTcp
                 var sslStream = new SslStream(networkStream, leaveInnerStreamOpen: false, cb);
 
                 // Use the provided host for SNI / name validation. If host is an IP and you enable validation, SAN must include that IP.
-                sslStream.AuthenticateAsClient(host, ClientCertificates, EnabledSslProtocols, checkCertificateRevocation: false);
+                sslStream.AuthenticateAsClient(host, ClientCertificates, EnabledSslProtocols, CheckCertificateRevocation);
 
                 tcpConnection = new TcpConnection(socket, remoteEndPoint, this);
                 tcpConnection.SetStream(sslStream);
