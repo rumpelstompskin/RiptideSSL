@@ -33,3 +33,7 @@ openssl pkcs12 -export -legacy \
 -macalg sha1 \
 -passout pass:changeit
 ```
+
+## Road map
+Merge directory & config file creation to the dll.
+Move certificate data from server manager to it's own class.
