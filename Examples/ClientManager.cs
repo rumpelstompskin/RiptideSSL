@@ -1,4 +1,3 @@
-using Sirenix.OdinInspector;
 using UnityEngine;
 using Riptide;
 using Riptide.Transports.TlsTcp;
@@ -6,10 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System;
 
-[HideMonoScript]
 public class ClientManager : MonoBehaviour
 {
-    [SerializeField, BoxGroup("Controls")]
+    [SerializeField]
     public string addressPort = "127.0.0.1:7777";
 
     private Client client;
@@ -57,7 +55,6 @@ public class ClientManager : MonoBehaviour
         isConnected = false;
     }
 
-    [Button, HorizontalGroup("Controls/Buttons")]
     public void ConnectTLSClientAsync()
     {
         if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -102,7 +99,6 @@ public class ClientManager : MonoBehaviour
         });
     }
 
-    [Button, HorizontalGroup("Controls/Buttons")]
     private void ConnectUdpClient()
     {
         if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -111,7 +107,6 @@ public class ClientManager : MonoBehaviour
         client.Connect(addressPort);
     }
 
-    [Button, HorizontalGroup("Controls/Buttons")]
     public void DisconnectClient()
     {
         if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -121,3 +116,4 @@ public class ClientManager : MonoBehaviour
         client.Disconnect();
     }
 }
+
