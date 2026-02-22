@@ -35,5 +35,5 @@ openssl pkcs12 -export -legacy \
 ```
 
 ## Road map
-Merge directory & config file creation to the dll.
-Move certificate data from server manager to it's own class.
+- Merge directory & config file creation to the dll.
+- Move certificate data from server manager to it's own class.
