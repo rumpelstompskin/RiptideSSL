@@ -6,16 +6,28 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
-using System.IO;
+using Newtonsoft.Json;
 
 namespace Riptide.Transports.TlsTcp
 {
+    /// <summary></summary>
+    [Serializable]
+    public class CertConfig
+    {
+        /// <summary></summary>
+        public string certificateFile = "";
+        /// <summary></summary>
+        public string password = "";
+    }
+
     /// <summary>A server which can accept TLS-wrapped connections from <see cref="TcpClient"/>s.</summary>
     public class TcpServer : TcpPeer, IServer
     {
@@ -29,8 +41,20 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>The maximum number of pending connections to allow at any given time.</summary>
         public int MaxPendingConnections { get; private set; } = 5;
 
+        /// <summary></summary>
+        public string CERT_NAME { get; set; } = string.Empty;
+
+        /// <summary></summary>
+        public string CERT_PW { get; set; } = string.Empty;
+
+        /// <summary></summary>
+        public string CONFIG_PATH { get; } = "certs/config.json";
+
         /// <summary>Server certificate used for TLS.</summary>
-        public X509Certificate ServerCertificate { get; set; }
+        public X509Certificate2 ServerCertificate { get; set; }
+
+        /// <summary></summary>
+        public bool CertificateValidated { get; set; } = false;
 
         /// <summary>Which TLS protocol versions to allow.</summary>
         public SslProtocols EnabledSslProtocols { get; set; } = SslProtocols.Tls12;
@@ -68,11 +92,70 @@ namespace Riptide.Transports.TlsTcp
         {
             if (ServerCertificate == null)
                 throw new InvalidOperationException("ServerCertificate must be set before starting the TLS server.");
+            
 
             Port = port;
             connections = new Dictionary<IPEndPoint, TcpConnection>();
 
             StartListening(port);
+        }
+
+        /// <summary></summary>
+        public void Initialize()
+        {
+            string certDir = Path.Combine(Directory.GetCurrentDirectory(), "certs/");
+
+            if (!Directory.Exists(certDir))
+            {
+                Console.WriteLine("Certificate directory not found. Creating.");
+                Directory.CreateDirectory(certDir);
+            }
+
+            string confPath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_PATH);
+
+            if (!File.Exists(confPath))
+            {
+                Console.WriteLine("Certificate configuration file not found. Creating.");
+                var config = new CertConfig
+                {
+                    certificateFile = "",
+                    password = ""
+                };
+
+                string json = JsonConvert.SerializeObject(config, Formatting.Indented);
+                File.WriteAllText(confPath, json);
+
+                Console.WriteLine($"Certificate directory and configuration file created in {certDir}.");
+                return;
+            }
+            else
+            {
+                CertificateValidated = ValidateCertificateConfig(confPath);
+            }
+        }
+
+        /// <summary></summary> 
+        /// <param name="confPath"></param>
+        /// <returns></returns>
+        public bool ValidateCertificateConfig(string confPath)
+        {
+            string json = File.ReadAllText(confPath);
+            var certConfig = JsonConvert.DeserializeObject<CertConfig>(json);
+            CERT_NAME = certConfig.certificateFile;
+            CERT_PW = certConfig.password;
+
+            try
+            {
+                var pfxPath = Path.Combine(Directory.GetCurrentDirectory(), $"certs/{CERT_NAME}.pfx");
+                ServerCertificate = new X509Certificate2(pfxPath, CERT_PW,
+                    X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Invalid certificate. {e.GetType().Name}: {e.Message}");
+                return false;
+            }
         }
 
         /// <summary>Starts listening for connections on the given port.</summary>

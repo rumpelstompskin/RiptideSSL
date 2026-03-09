@@ -51,6 +51,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Copy Condition="'$(SolutionName)'=='RiptideNetworking'" SourceFiles="@(UPMSourceFiles)" DestinationFiles="@(UPMSourceFiles->'$(SolutionDir)..\Packages\Core\Runtime\Core\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
