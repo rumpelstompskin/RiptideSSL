@@ -14,20 +14,9 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace Riptide.Transports.TlsTcp
 {
-    /// <summary></summary>
-    [Serializable]
-    public class CertConfig
-    {
-        /// <summary></summary>
-        public string certificateFile = "";
-        /// <summary></summary>
-        public string password = "";
-    }
-
     /// <summary>A server which can accept TLS-wrapped connections from <see cref="TcpClient"/>s.</summary>
     public class TcpServer : TcpPeer, IServer
     {
@@ -100,66 +89,44 @@ namespace Riptide.Transports.TlsTcp
             StartListening(port);
         }
 
-        /// <summary></summary>
+        /// <summary>
+        /// Ensures the certs directory and config file exist, then loads the certificate.
+        /// Delegates file and certificate work to <see cref="CertLoader"/>.
+        /// Writes status messages to <see cref="Console"/>.
+        /// </summary>
         public void Initialize()
         {
             string certDir = Path.Combine(Directory.GetCurrentDirectory(), "certs/");
-
-            if (!Directory.Exists(certDir))
-            {
-                Console.WriteLine("Certificate directory not found. Creating.");
-                Directory.CreateDirectory(certDir);
-            }
-
             string confPath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_PATH);
 
-            if (!File.Exists(confPath))
+            bool configExisted = CertLoader.EnsureScaffold(certDir, confPath);
+            if (!configExisted)
             {
-                Console.WriteLine("Certificate configuration file not found. Creating.");
-                var config = new CertConfig
-                {
-                    certificateFile = "",
-                    password = ""
-                };
-
-                string json = JsonConvert.SerializeObject(config, Formatting.Indented);
-                File.WriteAllText(confPath, json);
-
-                Console.WriteLine($"Certificate directory and configuration file created in {certDir}.");
+                Console.WriteLine($"Certificate directory and configuration file created in {certDir}. Fill in {confPath} and restart.");
                 return;
+            }
+
+            CertificateValidated = ValidateCertificateConfig(confPath);
+        }
+
+        /// <summary>Loads and validates the certificate described by the config file at <paramref name="confPath"/>.</summary>
+        /// <param name="confPath">Absolute path to the config JSON file.</param>
+        /// <returns><c>true</c> if the certificate was loaded successfully; otherwise <c>false</c>.</returns>
+        public bool ValidateCertificateConfig(string confPath)
+        {
+            string certDir = Path.Combine(Directory.GetCurrentDirectory(), "certs/");
+            bool ok = CertLoader.LoadFromConfig(confPath, certDir, out var cert, out string name, out string pw);
+            if (ok)
+            {
+                ServerCertificate = cert;
+                CERT_NAME = name;
+                CERT_PW = pw;
             }
             else
             {
-                CertificateValidated = ValidateCertificateConfig(confPath);
+                Console.WriteLine("Invalid certificate. Check the config and PFX file.");
             }
-        }
-
-        /// <summary></summary> 
-        /// <param name="confPath"></param>
-        /// <returns></returns>
-        public bool ValidateCertificateConfig(string confPath)
-        {
-            string json = File.ReadAllText(confPath);
-            var certConfig = JsonConvert.DeserializeObject<CertConfig>(json);
-            CERT_NAME = certConfig.certificateFile;
-            CERT_PW = certConfig.password;
-
-            try
-            {
-                var pfxPath = Path.Combine(Directory.GetCurrentDirectory(), $"certs/{CERT_NAME}.pfx");
-                // Load as bytes so the (byte[], string, flags) overload is used — available in netstandard2.0.
-                // EphemeralKeySet (value 32) is defined in netstandard2.1+ / .NET Core 2.1+; cast by value so
-                // the code compiles against netstandard2.0 but uses the flag on modern runtimes (Unity 2021+, .NET 6+).
-                const X509KeyStorageFlags EphemeralKeySet = (X509KeyStorageFlags)32;
-                ServerCertificate = new X509Certificate2(File.ReadAllBytes(pfxPath), CERT_PW,
-                    EphemeralKeySet | X509KeyStorageFlags.Exportable);
-                return true;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Invalid certificate. {e.GetType().Name}: {e.Message}");
-                return false;
-            }
+            return ok;
         }
 
         /// <summary>Starts listening for connections on the given port.</summary>
