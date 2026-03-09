@@ -147,8 +147,12 @@ namespace Riptide.Transports.TlsTcp
             try
             {
                 var pfxPath = Path.Combine(Directory.GetCurrentDirectory(), $"certs/{CERT_NAME}.pfx");
-                ServerCertificate = new X509Certificate2(pfxPath, CERT_PW,
-                    X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable);
+                // Load as bytes so the (byte[], string, flags) overload is used — available in netstandard2.0.
+                // EphemeralKeySet (value 32) is defined in netstandard2.1+ / .NET Core 2.1+; cast by value so
+                // the code compiles against netstandard2.0 but uses the flag on modern runtimes (Unity 2021+, .NET 6+).
+                const X509KeyStorageFlags EphemeralKeySet = (X509KeyStorageFlags)32;
+                ServerCertificate = new X509Certificate2(File.ReadAllBytes(pfxPath), CERT_PW,
+                    EphemeralKeySet | X509KeyStorageFlags.Exportable);
                 return true;
             }
             catch (Exception e)
