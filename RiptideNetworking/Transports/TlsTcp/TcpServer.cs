@@ -14,6 +14,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using Riptide.Utils;
 
 namespace Riptide.Transports.TlsTcp
 {
@@ -94,15 +95,16 @@ namespace Riptide.Transports.TlsTcp
         /// Delegates file and certificate work to <see cref="CertLoader"/>.
         /// Writes status messages to <see cref="Console"/>.
         /// </summary>
-        public void Initialize()
+        /// <param name="basePath">Base directory under which the <c>certs/</c> folder and config file are located.</param>
+        public void Initialize(string basePath)
         {
-            string certDir = Path.Combine(Directory.GetCurrentDirectory(), "certs/");
-            string confPath = Path.Combine(Directory.GetCurrentDirectory(), CONFIG_PATH);
+            string certDir  = Path.Combine(basePath, "certs");
+            string confPath = Path.Combine(basePath, CONFIG_PATH);
 
             bool configExisted = CertLoader.EnsureScaffold(certDir, confPath);
             if (!configExisted)
             {
-                Console.WriteLine($"Certificate directory and configuration file created in {certDir}. Fill in {confPath} and restart.");
+                RiptideLogger.Log(LogType.Info, "TLS Server", $"Certificate directory and configuration file created in {certDir}. Fill in {confPath} and restart.");
                 return;
             }
 
@@ -114,8 +116,8 @@ namespace Riptide.Transports.TlsTcp
         /// <returns><c>true</c> if the certificate was loaded successfully; otherwise <c>false</c>.</returns>
         public bool ValidateCertificateConfig(string confPath)
         {
-            string certDir = Path.Combine(Directory.GetCurrentDirectory(), "certs/");
-            bool ok = CertLoader.LoadFromConfig(confPath, certDir, out var cert, out string name, out string pw);
+            string certDir = Path.GetDirectoryName(confPath);
+            bool ok = CertLoader.LoadFromConfig(confPath, certDir, out var cert, out string name, out string pw, out string error);
             if (ok)
             {
                 ServerCertificate = cert;
@@ -124,7 +126,7 @@ namespace Riptide.Transports.TlsTcp
             }
             else
             {
-                Console.WriteLine("Invalid certificate. Check the config and PFX file.");
+                RiptideLogger.Log(LogType.Error, "TLS Server", $"Failed to load certificate: {error}");
             }
             return ok;
         }
@@ -227,8 +229,9 @@ namespace Riptide.Transports.TlsTcp
 
                         authenticatedConnections.Enqueue(conn);
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        RiptideLogger.Log(LogType.Error, "TLS Server", $"TLS handshake failed with {fromEndPoint}: {ex.Message}");
                         try { acceptedSocket.Close(); } catch { }
                     }
                 });
