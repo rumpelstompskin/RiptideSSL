@@ -19,7 +19,12 @@ public class ClientManager : MonoBehaviour
     {
         unityCtx = SynchronizationContext.Current;
 
-        TcpClient clientTransport = new TcpClient { ValidateServerCertificate = true, CheckCertificateRevocation = true }; // Development environment = false, Production = true
+        // Development environment = false, Production = true
+        TcpClient clientTransport = new TcpClient
+        {
+            ValidateServerCertificate = true,
+            CheckCertificateRevocation = true
+        };
 
         client = new Client(clientTransport);
     }
@@ -99,14 +104,6 @@ public class ClientManager : MonoBehaviour
         });
     }
 
-    private void ConnectUdpClient()
-    {
-        if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
-
-        client = new Client();
-        client.Connect(addressPort);
-    }
-
     public void DisconnectClient()
     {
         if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
@@ -116,4 +113,3 @@ public class ClientManager : MonoBehaviour
         client.Disconnect();
     }
 }
-

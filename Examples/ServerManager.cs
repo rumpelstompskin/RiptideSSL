@@ -2,9 +2,11 @@ using Riptide;
 using Riptide.Transports.TlsTcp;
 using Riptide.Utils;
 using System;
+using System.IO;
+using System.Security.Cryptography.X509Certificates;
 using UnityEngine;
 
-[HideMonoScript]
+
 public class ServerManager : MonoBehaviour
 {
     [field: SerializeField, Tooltip("Port the server will listen to for connections."), Header("Configuration")]
@@ -13,40 +15,24 @@ public class ServerManager : MonoBehaviour
     [field: SerializeField, Tooltip("Maximum number of connected clients.")]
     public ushort MAX_CLIENTCOUNT { get; private set; } = 10;
 
-    [SerializeField]
-    private bool autoStartServer = false;
-
     Server server;
+    TcpServer transport;
+    public TcpServer GetTransport => transport;
 
     public void StartTlsTcpServer()
     {
-        if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
+        if(!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
 
-        var transport = new TcpServer();
+        transport = new TcpServer();
         transport.Initialize(Application.dataPath);
 
-        if (!transport.CertificateValidated)
+        if (transport.CertificateValidated)
         {
-            Debug.Log("Populate your certificate configuration file first.");
-            return;
+            server = new Server(transport, logName: "TLS Server");
+            server.Start(PORT, MAX_CLIENTCOUNT);
+            server.ClientConnected += OnClientConnected;
+            server.ClientDisconnected += OnClientDisconnected;
         }
-
-        server = new Server(transport, logName: "Tls Server");
-        server.Start(PORT, MAX_CLIENTCOUNT);
-
-        server.ClientConnected += OnClientConnected;
-        server.ClientDisconnected += OnClientDisconnected;
-    }
-
-    private void StartUdpServer()
-    {
-        if (!Application.isPlaying) { Debug.LogError("Cannot run outside of playmode."); return; }
-
-        server = new Server();
-        server.Start(PORT, MAX_CLIENTCOUNT);
-
-        server.ClientConnected += OnClientConnected;
-        server.ClientDisconnected += OnClientDisconnected;
     }
 
     public void StopServer()
@@ -58,8 +44,7 @@ public class ServerManager : MonoBehaviour
             server.ClientConnected -= OnClientConnected;
             server.ClientDisconnected -= OnClientDisconnected;
             server.Stop();
-        }
-        else
+        } else
         {
             Debug.LogError("Server is currently not running.");
         }
@@ -82,13 +67,12 @@ public class ServerManager : MonoBehaviour
 
     private void Awake()
     {
-        RiptideLogger.Initialize(logMethod: Debug.Log, true);
-    }
-
-    private void Start()
-    {
-        if (autoStartServer)
-            StartTlsTcpServer();
+        RiptideLogger.Initialize(
+            debugMethod: Debug.Log,
+            infoMethod: Debug.Log,
+            warningMethod: Debug.LogWarning,
+            errorMethod: Debug.LogError,
+            true);
     }
 
     private void FixedUpdate()
