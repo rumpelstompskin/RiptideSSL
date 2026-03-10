@@ -1,4 +1,5 @@
 # TLS TCP Transport for Riptide by Tom Weiland
+*Developed with the assistance of [Claude](https://claude.ai) by Anthropic.*
 Encrypt your Riptide connection using TLS with certificates packaged in PKCS12 (.pfx).
 
 Full example implementations are in `Examples/ServerManager.cs` and `Examples/ClientManager.cs`.
