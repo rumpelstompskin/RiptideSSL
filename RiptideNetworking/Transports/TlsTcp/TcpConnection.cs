@@ -21,9 +21,6 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>The endpoint representing the other end of the connection.</summary>
         public readonly IPEndPoint RemoteEndPoint;
 
-        /// <summary>Whether or not the server has received a connection attempt from this connection.</summary>
-        internal bool DidReceiveConnect;
-
         /// <summary>The socket backing this connection (used for endpoint identity and closing).</summary>
         private readonly Socket socket;
         /// <summary>The local peer this connection is associated with.</summary>
