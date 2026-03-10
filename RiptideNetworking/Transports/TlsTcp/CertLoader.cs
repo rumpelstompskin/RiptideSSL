@@ -41,7 +41,35 @@ namespace Riptide.Transports.TlsTcp
         public static X509Certificate2 LoadCertificate(string pfxPath, string password)
         {
             byte[] pfxBytes = File.ReadAllBytes(pfxPath);
-            return new X509Certificate2(pfxBytes, password, EphemeralKeySet | X509KeyStorageFlags.Exportable);
+            Exception e1 = null, e2 = null;
+            try
+            {
+                return new X509Certificate2(pfxBytes, password, EphemeralKeySet | X509KeyStorageFlags.Exportable);
+            }
+            catch (Exception ex) { e1 = ex; }
+
+            try
+            {
+                return new X509Certificate2(pfxBytes, password, X509KeyStorageFlags.Exportable);
+            }
+            catch (Exception ex) { e2 = ex; }
+
+            // Both attempts failed. If both errors are "unsupported HMAC", the PFX was created
+            // with OpenSSL 3.x defaults (SHA-256 HMAC / AES-256-CBC) which Unity/Mono cannot load.
+            // Regenerate the certificate using the -legacy flag:
+            //
+            //   # Convert existing PFX:
+            //   openssl pkcs12 -legacy -in modern.pfx -out legacy.pfx -passin pass:PASSWORD -passout pass:PASSWORD
+            //
+            //   # Or generate a new self-signed cert:
+            //   openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 3650 -nodes -subj "/CN=localhost"
+            //   openssl pkcs12 -export -legacy -in cert.pem -inkey key.pem -out server.pfx -passout pass:PASSWORD
+            //
+            throw new Exception(
+                $"Failed to load PFX '{pfxPath}'. " +
+                $"If you see 'unsupported HMAC', regenerate the certificate with 'openssl pkcs12 -export -legacy ...' " +
+                $"to use SHA-1/3DES encryption required by Unity/Mono. " +
+                $"Errors: [{e1?.Message}] [{e2?.Message}]");
         }
 
         /// <summary>
@@ -77,13 +105,15 @@ namespace Riptide.Transports.TlsTcp
         /// <param name="cert">The loaded certificate, or <c>null</c> on failure.</param>
         /// <param name="certName">The certificate file name read from config.</param>
         /// <param name="certPw">The certificate password read from config.</param>
+        /// <param name="error">The exception message if loading failed; otherwise <c>null</c>.</param>
         /// <returns><c>true</c> on success; <c>false</c> if the certificate could not be loaded.</returns>
         public static bool LoadFromConfig(string configPath, string certDir,
-            out X509Certificate2 cert, out string certName, out string certPw)
+            out X509Certificate2 cert, out string certName, out string certPw, out string error)
         {
             cert = null;
             certName = string.Empty;
             certPw = string.Empty;
+            error = null;
 
             try
             {
@@ -96,8 +126,9 @@ namespace Riptide.Transports.TlsTcp
                 cert = LoadCertificate(pfxPath, certPw);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                error = ex.Message;
                 return false;
             }
         }
