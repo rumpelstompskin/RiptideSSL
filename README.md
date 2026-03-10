@@ -4,6 +4,18 @@ Encrypt your Riptide connection using TLS with certificates packaged in PKCS12 (
 
 Full example implementations are in `Examples/ServerManager.cs` and `Examples/ClientManager.cs`.
 
+## Why legacy certificates are required
+
+Unity's Mono runtime cannot load PFX files created with **OpenSSL 3.x defaults**, which use SHA-256 HMAC and AES-256-CBC to encrypt the PFX container. Mono only supports the older **SHA-1/3DES** (PKCS12 legacy) container format.
+
+The `-legacy` flag in the OpenSSL commands below selects this format. This is a **container-only** limitation — it affects how the certificate file is packaged on disk, not the security of your actual connection. The TLS 1.2 session established at runtime uses modern cipher suites regardless.
+
+If you receive an error like `unsupported HMAC` or `Failed to load PFX`, your certificate was created without `-legacy`. Convert it with:
+
+```powershell
+openssl pkcs12 -legacy -in modern.pfx -out legacy.pfx -passin pass:PASSWORD -passout pass:PASSWORD
+```
+
 ## Server setup
 
 Call `Initialize(basePath)` on the transport before starting the server. This creates the `certs/` directory and `config.json` scaffold if they don't exist, then loads the certificate described by the config. If the scaffold was just created, fill in `config.json` and restart.
@@ -61,5 +73,28 @@ openssl pkcs12 -export -legacy \
 -keypbe PBE-SHA1-3DES \
 -macalg sha1 \
 -passout pass:changeit
+```
+
+## Accessing certificate data at runtime
+
+After `Initialize()` succeeds and `CertificateValidated` is `true`, the `TcpServer` transport exposes the following properties:
+
+| Property | Type | Description |
+|---|---|---|
+| `transport.CERT_NAME` | `string` | Certificate file name read from `config.json` (without `.pfx`) |
+| `transport.CERT_PW` | `string` | Password read from `config.json` |
+| `transport.ServerCertificate` | `X509Certificate2` | The loaded certificate object |
+
+The `X509Certificate2` object provides additional details:
+
+```csharp
+X509Certificate2 cert = transport.ServerCertificate;
+
+string subject      = cert.Subject;       // e.g. "CN=localhost"
+string issuer       = cert.Issuer;        // e.g. "CN=MyCA"
+string thumbprint   = cert.Thumbprint;    // SHA-1 fingerprint (hex)
+string serial       = cert.SerialNumber;  // Hex serial number
+DateTime notBefore  = cert.NotBefore;     // Validity start
+DateTime notAfter   = cert.NotAfter;      // Validity end (expiry)
 ```
 

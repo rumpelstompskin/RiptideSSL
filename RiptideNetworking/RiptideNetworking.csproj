@@ -6,11 +6,12 @@
 
     <RunPostBuildEvent>OnBuildSuccess</RunPostBuildEvent>
     <RootNamespace>Riptide</RootNamespace>
-    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <PackageId>RiptideNetworking.Riptide</PackageId>
     <Authors>Tom Weiland</Authors>
     <Product>Riptide Networking</Product>
     <VersionPrefix>2.2.1</VersionPrefix>
+    <VersionSuffix>TLSv1.0</VersionSuffix>
     <PackageTags>riptide;networking;multiplayer;game development;server;client;multiplayer games;udp;rudp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
