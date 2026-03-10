@@ -5,11 +5,11 @@ Full example implementations are in `Examples/ServerManager.cs` and `Examples/Cl
 
 ## Server setup
 
-Call `Initialize()` on the transport before starting the server. This creates the `certs/` directory and `config.json` scaffold if they don't exist, then loads the certificate described by the config. If the scaffold was just created, fill in `config.json` and restart.
+Call `Initialize(basePath)` on the transport before starting the server. This creates the `certs/` directory and `config.json` scaffold if they don't exist, then loads the certificate described by the config. If the scaffold was just created, fill in `config.json` and restart.
 
 ```csharp
 TcpServer transport = new TcpServer();
-transport.Initialize();
+transport.Initialize(Application.dataPath); // Unity: pass Application.dataPath
 
 if (transport.CertificateValidated)
 {
@@ -37,7 +37,7 @@ await Task.Run(() => client.Connect("127.0.0.1:7777"));
 
 ## config.json
 
-`config.json` lives in `certs/config.json` relative to the working directory (on a Unity server this is the project's `Assets/` folder). Place your `.pfx` file in the same `certs/` directory.
+`config.json` lives in `certs/config.json` relative to the `basePath` you pass to `Initialize()`. In Unity, pass `Application.dataPath` — that resolves to `Assets/` in the Editor and `<Name>_Data/` in a build. Place your `.pfx` file in the same `certs/` directory.
 
 ```json
 {
@@ -62,6 +62,3 @@ openssl pkcs12 -export -legacy \
 -passout pass:changeit
 ```
 
-## Road map
-- Merge directory & config file creation to the dll.
-- Move certificate data from server manager to it's own class.
