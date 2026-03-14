@@ -82,6 +82,7 @@ namespace Riptide
         public Client(IClient transport, string logName = "CLIENT") : base(logName)
         {
             this.transport = transport;
+            NetworkManager.SetClient(this);
         }
         /// <summary>Handles initial setup using the built-in UDP transport.</summary>
         /// <param name="logName">The name to use when logging messages via <see cref="RiptideLogger"/>.</param>
@@ -330,6 +331,7 @@ namespace Riptide
             transport.Disconnect();
 
             connection.LocalDisconnect();
+            NetworkManager.ClearClient();
 
             if (reason == DisconnectReason.NeverConnected)
                 OnConnectionFailed(RejectReason.NoConnection);

@@ -81,6 +81,7 @@ namespace Riptide
             pendingConnections = new List<Connection>();
             clients = new Dictionary<ushort, Connection>();
             timedOutClients = new List<Connection>();
+            NetworkManager.SetServer(this);
         }
         /// <summary>Handles initial setup using the built-in UDP transport.</summary>
         /// <param name="logName">The name to use when logging messages via <see cref="RiptideLogger"/>.</param>
@@ -479,6 +480,7 @@ namespace Riptide
 
             StopTime();
             IsRunning = false;
+            NetworkManager.ClearServer();
             RiptideLogger.Log(LogType.Info, LogName, "Server stopped.");
         }
 

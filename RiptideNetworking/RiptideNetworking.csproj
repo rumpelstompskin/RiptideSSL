@@ -11,7 +11,7 @@
     <Authors>Tom Weiland</Authors>
     <Product>Riptide Networking</Product>
     <VersionPrefix>2.2.1</VersionPrefix>
-    <VersionSuffix>TLSv1.0</VersionSuffix>
+    <VersionSuffix>TLSv1.1a</VersionSuffix>
     <PackageTags>riptide;networking;multiplayer;game development;server;client;multiplayer games;udp;rudp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
@@ -28,14 +28,15 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <DefineConstants>TRACE</DefineConstants>
-    <DocumentationFile>bin\Debug\netstandard2.0\RiptideNetworking.xml</DocumentationFile>
-    <OutputPath>bin\Debug\netstandard2.0\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\Debug\$(VersionPrefix)-$(VersionSuffix)\</OutputPath>
+    <DocumentationFile>bin\Debug\$(VersionPrefix)-$(VersionSuffix)\RiptideNetworking.xml</DocumentationFile>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <OutputPath>bin\Release\netstandard2.0\</OutputPath>
-    <DocumentationFile>bin\Release\netstandard2.0\RiptideNetworking.xml</DocumentationFile>
+    <OutputPath>bin\Release\$(VersionPrefix)-$(VersionSuffix)\</OutputPath>
+    <DocumentationFile>bin\Release\$(VersionPrefix)-$(VersionSuffix)\RiptideNetworking.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

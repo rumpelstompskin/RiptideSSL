@@ -1,7 +1,10 @@
-# TLS TCP Transport for Riptide by Tom Weiland
+# TLS TCP Transport for Riptide
+
 Encrypt your Riptide connection using TLS with certificates packaged in PKCS12 (.pfx).
 
 Full example implementations are in `Examples/ServerManager.cs` and `Examples/ClientManager.cs`.
+
+---
 
 ## Why legacy certificates are required
 
@@ -14,6 +17,8 @@ If you receive an error like `unsupported HMAC` or `Failed to load PFX`, your ce
 ```powershell
 openssl pkcs12 -legacy -in modern.pfx -out legacy.pfx -passin pass:PASSWORD -passout pass:PASSWORD
 ```
+
+---
 
 ## Server setup
 
@@ -30,6 +35,8 @@ if (transport.CertificateValidated)
 }
 ```
 
+---
+
 ## Client setup
 
 The client connect call blocks the calling thread, so always connect on a background thread (e.g. `Task.Run`) to avoid locking the Unity main thread.
@@ -43,9 +50,10 @@ TcpClient clientTransport = new TcpClient
 
 client = new Client(clientTransport);
 
-// Connect asynchronously
 await Task.Run(() => client.Connect("127.0.0.1:7777"));
 ```
+
+---
 
 ## config.json
 
@@ -60,19 +68,25 @@ await Task.Run(() => client.Connect("127.0.0.1:7777"));
 
 `certificateFile` is the name of the `.pfx` file without the extension.
 
-## Example pfx creation
-The pfx file must include the private key.
+---
+
+## Example PFX creation
+
+The PFX file must include the private key.
+
 ```powershell
 openssl pkcs12 -export -legacy \
--inkey yourdomain.key \
--in yourdomain.pem \
--certfile yourdomain_chain.pem \
--out yourdomain.pfx \
--certpbe PBE-SHA1-3DES \
--keypbe PBE-SHA1-3DES \
--macalg sha1 \
--passout pass:changeit
+  -inkey yourdomain.key \
+  -in yourdomain.pem \
+  -certfile yourdomain_chain.pem \
+  -out yourdomain.pfx \
+  -certpbe PBE-SHA1-3DES \
+  -keypbe PBE-SHA1-3DES \
+  -macalg sha1 \
+  -passout pass:changeit
 ```
+
+---
 
 ## Accessing certificate data at runtime
 
@@ -89,12 +103,46 @@ The `X509Certificate2` object provides additional details:
 ```csharp
 X509Certificate2 cert = transport.ServerCertificate;
 
-string subject      = cert.Subject;       // e.g. "CN=localhost"
-string issuer       = cert.Issuer;        // e.g. "CN=MyCA"
-string thumbprint   = cert.Thumbprint;    // SHA-1 fingerprint (hex)
-string serial       = cert.SerialNumber;  // Hex serial number
-DateTime notBefore  = cert.NotBefore;     // Validity start
-DateTime notAfter   = cert.NotAfter;      // Validity end (expiry)
+string subject     = cert.Subject;      // e.g. "CN=localhost"
+string issuer      = cert.Issuer;       // e.g. "CN=MyCA"
+string thumbprint  = cert.Thumbprint;   // SHA-1 fingerprint (hex)
+string serial      = cert.SerialNumber; // Hex serial number
+DateTime notBefore = cert.NotBefore;    // Validity start
+DateTime notAfter  = cert.NotAfter;     // Validity end (expiry)
 ```
+
+---
+
+## NetworkManager
+
+`NetworkManager` is a static class providing global access to the current network role and the active `Server`/`Client` instances. Instances register themselves automatically when constructed and clear themselves when stopped or disconnected — no manual setup required.
+
+```csharp
+bool isServer = NetworkManager.IsServer;
+bool isClient = NetworkManager.IsClient;
+
+Server server = NetworkManager.Server;
+Client client = NetworkManager.Client;
+
+switch (NetworkManager.Mode)
+{
+    case NetworkMode.Server:
+        // server-side logic
+        break;
+    case NetworkMode.Client:
+        // client-side logic
+        break;
+}
+```
+
+`NetworkManager.Server` is set to `null` automatically when `Server.Stop()` is called. `NetworkManager.Client` is set to `null` automatically when the client disconnects for any reason.
+
+### NetworkMode
+
+```csharp
+public enum NetworkMode { Server, Client }
+```
+
+---
 
 *Developed with the assistance of [Claude](https://claude.ai) by Anthropic.*
