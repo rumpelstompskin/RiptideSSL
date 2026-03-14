@@ -145,4 +145,4 @@ public enum NetworkMode { Server, Client }
 
 ---
 
-*Developed with the assistance of [Claude](https://claude.ai) by Anthropic.*
+*TLS transport and NetworkManager extensions by Rumpelstompskin, developed with the assistance of [Claude](https://claude.ai) by Anthropic. Built on [Riptide Networking](https://riptide.tomweiland.net/) by Tom Weiland.*

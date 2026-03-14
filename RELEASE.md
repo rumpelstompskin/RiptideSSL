@@ -2,7 +2,9 @@
 
 **Version:** `2.2.1-TLSv1.1a`
 **Date:** 2026-03-14
-**License:** MIT | **Author:** Tom Weiland
+**License:** MIT
+**Extensions by:** Rumpelstompskin (TLS transport, NetworkManager)
+**Built on:** [Riptide Networking](https://riptide.tomweiland.net/) by Tom Weiland
 
 ---
 

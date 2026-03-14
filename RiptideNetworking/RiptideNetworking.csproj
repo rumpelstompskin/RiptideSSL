@@ -8,7 +8,7 @@
     <RootNamespace>Riptide</RootNamespace>
     <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
     <PackageId>RiptideNetworking.Riptide</PackageId>
-    <Authors>Tom Weiland</Authors>
+    <Authors>Rumpelstompskin;Tom Weiland</Authors>
     <Product>Riptide Networking</Product>
     <VersionPrefix>2.2.1</VersionPrefix>
     <VersionSuffix>TLSv1.1a</VersionSuffix>
