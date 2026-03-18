@@ -43,6 +43,39 @@ if (transport.CertificateValidated)
 
 ---
 
+## Connection quality thresholds
+
+Riptide continuously monitors connection health using three rolling checks and disconnects any client that consistently exceeds them:
+
+| Check | Default threshold | Resilience |
+|---|---|---|
+| Average send attempts (last 64 reliable messages) | `MaxAvgSendAttempts = 5` | Disconnect after `AvgSendAttemptsResilience = 64` consecutive violations |
+| Single reliable message resend count | `MaxSendAttempts = 15` | Immediate disconnect |
+| Notify message loss rate (last 64 notify messages) | `MaxNotifyLoss = 5%` | Disconnect after `NotifyLossResilience = 64` consecutive violations |
+
+All five values are configurable on the `Server` before calling `Start()` and apply automatically to every new connection:
+
+```csharp
+server.MaxAvgSendAttempts = 8;           // (default: 5)
+server.AvgSendAttemptsResilience = 128;  // (default: 64)
+server.MaxSendAttempts = 25;             // (default: 15)
+server.MaxNotifyLoss = 0.10f;            // (default: 0.05)
+server.NotifyLossResilience = 128;       // (default: 64)
+
+server.Start(port, maxClients);
+```
+
+Setting any of these after `Start()` propagates immediately to all currently connected clients.
+
+To disable quality-disconnect for a specific connection entirely (e.g. a trusted local relay):
+
+```csharp
+// Inside Server.ClientConnected handler:
+e.Client.CanQualityDisconnect = false;
+```
+
+---
+
 ## Client setup
 
 The client connect call blocks the calling thread, so always connect on a background thread (e.g. `Task.Run`) to avoid locking the Unity main thread.
