@@ -86,7 +86,9 @@ namespace Riptide
         /// <remarks>Changes will not affect <see cref="Server"/> and <see cref="Client"/> instances which are already running until they are restarted.</remarks>
         public static byte InstancesPerPeer { get; set; } = 4;
         /// <summary>A pool of reusable message instances.</summary>
-        private static readonly List<Message> pool = new List<Message>(InstancesPerPeer * 2);
+        private static readonly Stack<Message> pool = new Stack<Message>(InstancesPerPeer * 2);
+        /// <summary>The current soft cap on pool size, updated by <see cref="TrimPool"/>.</summary>
+        private static int _maxPoolSize = InstancesPerPeer * 2;
 
         static Message()
         {
@@ -123,6 +125,8 @@ namespace Riptide
         private int readBit;
         /// <summary>The next bit to be written.</summary>
         private int writeBit;
+        /// <summary>Whether this instance is currently sitting in the pool.</summary>
+        private bool _inPool;
 
         /// <summary>Initializes a reusable <see cref="Message"/> instance.</summary>
         private Message() => data = new ulong[maxArraySize];
@@ -173,19 +177,15 @@ namespace Riptide
         {
             if (Peer.ActiveCount == 0)
             {
-                // No Servers or Clients are running, empty the list and reset the capacity
                 pool.Clear();
-                pool.Capacity = InstancesPerPeer * 2; // x2 so there's some buffer room for extra Message instances in the event that more are needed
+                _maxPoolSize = InstancesPerPeer * 2;
             }
             else
             {
-                // Reset the pool capacity and number of Message instances in the pool to what is appropriate for how many Servers & Clients are active
                 int idealInstanceAmount = Peer.ActiveCount * InstancesPerPeer;
-                if (pool.Count > idealInstanceAmount)
-                {
-                    pool.RemoveRange(Peer.ActiveCount * InstancesPerPeer, pool.Count - idealInstanceAmount);
-                    pool.Capacity = idealInstanceAmount * 2;
-                }
+                _maxPoolSize = idealInstanceAmount * 2;
+                while (pool.Count > idealInstanceAmount)
+                    pool.Pop();
             }
         }
 
@@ -196,8 +196,8 @@ namespace Riptide
             Message message;
             if (pool.Count > 0)
             {
-                message = pool[0];
-                pool.RemoveAt(0);
+                message = pool.Pop();
+                message._inPool = false;
             }
             else
                 message = new Message();
@@ -208,11 +208,10 @@ namespace Riptide
         /// <summary>Returns the message instance to the internal pool so it can be reused.</summary>
         public void Release()
         {
-            if (pool.Count < pool.Capacity)
+            if (!_inPool && pool.Count < _maxPoolSize)
             {
-                // Pool exists and there's room
-                if (!pool.Contains(this))
-                    pool.Add(this); // Only add it if it's not already in the list, otherwise this method being called twice in a row for whatever reason could cause *serious* issues
+                _inPool = true;
+                pool.Push(this);
             }
         }
         #endregion

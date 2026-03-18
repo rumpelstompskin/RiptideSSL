@@ -20,7 +20,7 @@ namespace Riptide
         private const float RetryTimeMultiplier = 1.2f;
 
         /// <summary>A pool of reusable <see cref="PendingMessage"/> instances.</summary>
-        private static readonly List<PendingMessage> pool = new List<PendingMessage>();
+        private static readonly Stack<PendingMessage> pool = new Stack<PendingMessage>();
 
         /// <summary>The <see cref="Connection"/> to use to send (and resend) the pending message.</summary>
         private Connection connection;
@@ -32,6 +32,8 @@ namespace Riptide
         private byte sendAttempts;
         /// <summary>Whether the pending message has been cleared or not.</summary>
         private bool wasCleared;
+        /// <summary>Whether this instance is currently sitting in the pool.</summary>
+        private bool _inPool;
 
         /// <summary>Handles initial setup.</summary>
         internal PendingMessage()
@@ -66,8 +68,8 @@ namespace Riptide
             PendingMessage message;
             if (pool.Count > 0)
             {
-                message = pool[0];
-                pool.RemoveAt(0);
+                message = pool.Pop();
+                message._inPool = false;
             }
             else
                 message = new PendingMessage();
@@ -84,12 +86,11 @@ namespace Riptide
         /// <summary>Returns the <see cref="PendingMessage"/> instance to the pool so it can be reused.</summary>
         private void Release()
         {
-            if (!pool.Contains(this))
-                pool.Add(this); // Only add it if it's not already in the list, otherwise this method being called twice in a row for whatever reason could cause *serious* issues
-
-            // TODO: consider doing something to decrease pool capacity if there are far more
-            //       available instance than are needed, which could occur if a large burst of
-            //       messages has to be sent for some reason
+            if (!_inPool)
+            {
+                _inPool = true;
+                pool.Push(this);
+            }
         }
         #endregion
 

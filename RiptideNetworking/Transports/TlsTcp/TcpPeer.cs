@@ -16,8 +16,6 @@ namespace Riptide.Transports.TlsTcp
 
         /// <summary>An array that incoming data is received into.</summary>
         internal readonly byte[] ReceiveBuffer;
-        /// <summary>An array that outgoing data is sent out of.</summary>
-        internal readonly byte[] SendBuffer;
 
         /// <summary>The default size used for the socket's send and receive buffers.</summary>
         protected const int DefaultSocketBufferSize = 1024 * 1024; // 1MB
@@ -37,7 +35,6 @@ namespace Riptide.Transports.TlsTcp
 
             this.socketBufferSize = socketBufferSize;
             ReceiveBuffer = new byte[Message.MaxSize];
-            SendBuffer = new byte[Message.MaxSize + sizeof(int)]; // Need room for the entire message plus the message length (since this is TCP)
         }
 
         /// <summary>Handles received data.</summary>

@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.IO;
 using System.Net;
 using System.Net.Security;
@@ -29,7 +30,9 @@ namespace Riptide.Transports.TlsTcp
         /// <inheritdoc/>
         public ushort Port { get; private set; }
         /// <summary>The maximum number of pending connections to allow at any given time.</summary>
-        public int MaxPendingConnections { get; private set; } = 5;
+        public int MaxPendingConnections { get; set; } = 512;
+        /// <summary>The maximum number of TLS handshakes to perform concurrently. Limits ThreadPool saturation during connection bursts.</summary>
+        public int MaxConcurrentHandshakes { get; set; } = 32;
 
         /// <summary></summary>
         public string CERT_NAME { get; set; } = string.Empty;
@@ -60,11 +63,12 @@ namespace Riptide.Transports.TlsTcp
         /// <summary>The currently open connections, accessible by their endpoints.</summary>
         private Dictionary<IPEndPoint, TcpConnection> connections;
         /// <summary>Connections that have been closed and need to be removed from <see cref="connections"/>.</summary>
-        private readonly List<IPEndPoint> closedConnections = new List<IPEndPoint>();
+        private readonly ConcurrentQueue<IPEndPoint> closedConnections = new ConcurrentQueue<IPEndPoint>();
         /// <summary>The IP address to bind the socket to.</summary>
         private readonly IPAddress listenAddress;
 
         private readonly ConcurrentQueue<TcpConnection> authenticatedConnections = new ConcurrentQueue<TcpConnection>();
+        private SemaphoreSlim _handshakeSemaphore;
 
         /// <inheritdoc/>
         public TcpServer(int socketBufferSize = DefaultSocketBufferSize) : this(IPAddress.IPv6Any, socketBufferSize) { }
@@ -86,6 +90,7 @@ namespace Riptide.Transports.TlsTcp
 
             Port = port;
             connections = new Dictionary<IPEndPoint, TcpConnection>();
+            _handshakeSemaphore = new SemaphoreSlim(MaxConcurrentHandshakes, MaxConcurrentHandshakes);
 
             StartListening(port);
         }
@@ -174,12 +179,13 @@ namespace Riptide.Transports.TlsTcp
             }
 
             foreach (TcpConnection connection in connections.Values)
-                connection.Receive();
+            {
+                if (connection.HasPendingMessages)
+                    connection.Receive();
+            }
 
-            foreach (IPEndPoint endPoint in closedConnections)
+            while (closedConnections.TryDequeue(out IPEndPoint endPoint))
                 connections.Remove(endPoint);
-
-            closedConnections.Clear();
         }
 
         /// <summary>Accepts any pending connections and performs TLS handshake on a background task.</summary>
@@ -200,6 +206,7 @@ namespace Riptide.Transports.TlsTcp
                 // Handshake off-thread so Poll isn't blocked.
                 _ = Task.Run(async () =>
                 {
+                    await _handshakeSemaphore.WaitAsync().ConfigureAwait(false);
                     try
                     {
                         var networkStream = new NetworkStream(acceptedSocket, ownsSocket: false);
@@ -234,6 +241,10 @@ namespace Riptide.Transports.TlsTcp
                         RiptideLogger.Log(LogType.Error, "TLS Server", $"TLS handshake failed with {fromEndPoint}: {ex.Message}");
                         try { acceptedSocket.Close(); } catch { }
                     }
+                    finally
+                    {
+                        _handshakeSemaphore.Release();
+                    }
                 });
             }
         }
@@ -254,7 +265,7 @@ namespace Riptide.Transports.TlsTcp
             if (connection is TcpConnection tcp && tcp != null)
             {
                 tcp.Close();
-                closedConnections.Add(tcp.RemoteEndPoint);
+                closedConnections.Enqueue(tcp.RemoteEndPoint);
             }
         }
 
@@ -268,6 +279,8 @@ namespace Riptide.Transports.TlsTcp
                     c.Close();
                 connections.Clear();
             }
+            _handshakeSemaphore?.Dispose();
+            _handshakeSemaphore = null;
         }
 
         /// <summary>Invokes the <see cref="Connected"/> event.</summary>
@@ -288,7 +301,7 @@ namespace Riptide.Transports.TlsTcp
             base.OnDisconnected(connection, reason);
 
             if (connection is TcpConnection tcp)
-                closedConnections.Add(tcp.RemoteEndPoint);
+                closedConnections.Enqueue(tcp.RemoteEndPoint);
         }
     }
 }

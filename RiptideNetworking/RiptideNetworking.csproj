@@ -11,7 +11,7 @@
     <Authors>Rumpelstompskin;Tom Weiland</Authors>
     <Product>Riptide Networking</Product>
     <VersionPrefix>2.2.1</VersionPrefix>
-    <VersionSuffix>TLSv1.1a</VersionSuffix>
+    <VersionSuffix>TLSv1.2</VersionSuffix>
     <PackageTags>riptide;networking;multiplayer;game development;server;client;multiplayer games;udp;rudp</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
@@ -56,6 +56,7 @@
 
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="System.Buffers" Version="4.5.1" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">

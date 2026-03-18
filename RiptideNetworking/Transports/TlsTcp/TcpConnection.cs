@@ -5,6 +5,7 @@
 
 using Riptide.Utils;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -15,6 +16,13 @@ using System.Threading.Tasks;
 
 namespace Riptide.Transports.TlsTcp
 {
+    internal readonly struct RentedSegment
+    {
+        internal readonly byte[] Buffer;
+        internal readonly int Length;
+        internal RentedSegment(byte[] buffer, int length) { Buffer = buffer; Length = length; }
+    }
+
     /// <summary>Represents a connection to a <see cref="TcpServer"/> or <see cref="TcpClient"/>.</summary>
     public class TcpConnection : Connection, IEquatable<TcpConnection>
     {
@@ -30,7 +38,9 @@ namespace Riptide.Transports.TlsTcp
         private Stream stream;
 
         private readonly object sendLock = new object();
-        private readonly ConcurrentQueue<byte[]> receivedMessages = new ConcurrentQueue<byte[]>();
+        private readonly ConcurrentQueue<RentedSegment> receivedMessages = new ConcurrentQueue<RentedSegment>();
+        private volatile int _hasPendingMessages; // 0 = false, 1 = true
+        internal bool HasPendingMessages => _hasPendingMessages == 1;
 
         private CancellationTokenSource receiveCts;
         private Task receiveTask;
@@ -79,11 +89,18 @@ namespace Riptide.Transports.TlsTcp
                 // IMPORTANT: With TLS, concurrent writes can interleave and corrupt framing unless synchronized.
                 lock (sendLock)
                 {
-                    Converter.FromInt(amount, peer.SendBuffer, 0);
-                    Buffer.BlockCopy(dataBuffer, 0, peer.SendBuffer, sizeof(int), amount);
-
-                    stream.Write(peer.SendBuffer, 0, sizeof(int) + amount);
-                    // No Flush() here—SslStream/NetworkStream flush behavior is sufficient for TCP framing.
+                    int frameLength = sizeof(int) + amount;
+                    byte[] frame = ArrayPool<byte>.Shared.Rent(frameLength);
+                    try
+                    {
+                        Converter.FromInt(amount, frame, 0);
+                        Buffer.BlockCopy(dataBuffer, 0, frame, sizeof(int), amount);
+                        stream.Write(frame, 0, frameLength);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(frame);
+                    }
                 }
             }
             catch (IOException)
@@ -104,14 +121,24 @@ namespace Riptide.Transports.TlsTcp
         /// </summary>
         internal void Receive()
         {
-            while (receivedMessages.TryDequeue(out byte[] msg))
-            {
-                int count = msg.Length;
-                if (count <= 0)
-                    continue;
+            if (_hasPendingMessages == 0)
+                return;
 
-                Buffer.BlockCopy(msg, 0, peer.ReceiveBuffer, 0, count);
-                peer.OnDataReceived(count, this);
+            // Clear flag BEFORE draining. If background thread enqueues after this clear but
+            // before our loop ends, TryDequeue still catches it this cycle. If it enqueues
+            // after our loop ends, we process it next Poll() tick.
+            Interlocked.Exchange(ref _hasPendingMessages, 0);
+
+            while (receivedMessages.TryDequeue(out RentedSegment seg))
+            {
+                if (seg.Length <= 0)
+                {
+                    ArrayPool<byte>.Shared.Return(seg.Buffer);
+                    continue;
+                }
+                Buffer.BlockCopy(seg.Buffer, 0, peer.ReceiveBuffer, 0, seg.Length);
+                ArrayPool<byte>.Shared.Return(seg.Buffer);
+                peer.OnDataReceived(seg.Length, this);
             }
         }
 
@@ -132,12 +159,15 @@ namespace Riptide.Transports.TlsTcp
                     if (length <= 0 || length > Message.MaxSize)
                         throw new IOException($"Invalid message length: {length}");
 
-                    byte[] payload = new byte[length];
-                    read = await ReadExactAsync(stream, payload, 0, length, ct).ConfigureAwait(false);
+                    byte[] rented = ArrayPool<byte>.Shared.Rent(length);
+                    read = await ReadExactAsync(stream, rented, 0, length, ct).ConfigureAwait(false);
                     if (read == 0)
+                    {
+                        ArrayPool<byte>.Shared.Return(rented);
                         break;
-
-                    receivedMessages.Enqueue(payload);
+                    }
+                    receivedMessages.Enqueue(new RentedSegment(rented, length));
+                    Interlocked.Exchange(ref _hasPendingMessages, 1);
                 }
 
                 if (!isClosed)
@@ -183,6 +213,9 @@ namespace Riptide.Transports.TlsTcp
                 return;
 
             isClosed = true;
+
+            while (receivedMessages.TryDequeue(out RentedSegment seg))
+                ArrayPool<byte>.Shared.Return(seg.Buffer);
 
             try { receiveCts?.Cancel(); } catch { }
             try { stream?.Dispose(); } catch { }
