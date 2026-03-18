@@ -38,6 +38,56 @@ namespace Riptide
                     connection.TimeoutTime = defaultTimeout;
             }
         }
+        /// <inheritdoc/>
+        public override int MaxAvgSendAttempts
+        {
+            set
+            {
+                defaultMaxAvgSendAttempts = value;
+                foreach (Connection connection in clients.Values)
+                    connection.MaxAvgSendAttempts = defaultMaxAvgSendAttempts;
+            }
+        }
+        /// <inheritdoc/>
+        public override int AvgSendAttemptsResilience
+        {
+            set
+            {
+                defaultAvgSendAttemptsResilience = value;
+                foreach (Connection connection in clients.Values)
+                    connection.AvgSendAttemptsResilience = defaultAvgSendAttemptsResilience;
+            }
+        }
+        /// <inheritdoc/>
+        public override int MaxSendAttempts
+        {
+            set
+            {
+                defaultMaxSendAttempts = value;
+                foreach (Connection connection in clients.Values)
+                    connection.MaxSendAttempts = defaultMaxSendAttempts;
+            }
+        }
+        /// <inheritdoc/>
+        public override float MaxNotifyLoss
+        {
+            set
+            {
+                defaultMaxNotifyLoss = value;
+                foreach (Connection connection in clients.Values)
+                    connection.MaxNotifyLoss = defaultMaxNotifyLoss;
+            }
+        }
+        /// <inheritdoc/>
+        public override int NotifyLossResilience
+        {
+            set
+            {
+                defaultNotifyLossResilience = value;
+                foreach (Connection connection in clients.Values)
+                    connection.NotifyLossResilience = defaultNotifyLossResilience;
+            }
+        }
         /// <summary>The maximum number of concurrent connections.</summary>
         public ushort MaxClientCount { get; private set; }
         /// <summary>The number of currently connected clients.</summary>

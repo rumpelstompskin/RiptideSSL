@@ -41,9 +41,57 @@ namespace Riptide
             {
                 defaultTimeout = value;
                 if (connection != null)
-                {
                     connection.TimeoutTime = defaultTimeout;
-                }
+            }
+        }
+        /// <inheritdoc/>
+        public override int MaxAvgSendAttempts
+        {
+            set
+            {
+                defaultMaxAvgSendAttempts = value;
+                if (connection != null)
+                    connection.MaxAvgSendAttempts = defaultMaxAvgSendAttempts;
+            }
+        }
+        /// <inheritdoc/>
+        public override int AvgSendAttemptsResilience
+        {
+            set
+            {
+                defaultAvgSendAttemptsResilience = value;
+                if (connection != null)
+                    connection.AvgSendAttemptsResilience = defaultAvgSendAttemptsResilience;
+            }
+        }
+        /// <inheritdoc/>
+        public override int MaxSendAttempts
+        {
+            set
+            {
+                defaultMaxSendAttempts = value;
+                if (connection != null)
+                    connection.MaxSendAttempts = defaultMaxSendAttempts;
+            }
+        }
+        /// <inheritdoc/>
+        public override float MaxNotifyLoss
+        {
+            set
+            {
+                defaultMaxNotifyLoss = value;
+                if (connection != null)
+                    connection.MaxNotifyLoss = defaultMaxNotifyLoss;
+            }
+        }
+        /// <inheritdoc/>
+        public override int NotifyLossResilience
+        {
+            set
+            {
+                defaultNotifyLossResilience = value;
+                if (connection != null)
+                    connection.NotifyLossResilience = defaultNotifyLossResilience;
             }
         }
         /// <summary>Whether or not the client is currently <i>not</i> trying to connect, pending, nor actively connected.</summary>

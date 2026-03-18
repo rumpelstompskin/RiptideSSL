@@ -60,6 +60,16 @@ namespace Riptide
         public readonly string LogName;
         /// <summary>Sets the relevant connections' <see cref="Connection.TimeoutTime"/>s.</summary>
         public abstract int TimeoutTime { set; }
+        /// <summary>Sets the relevant connections' <see cref="Connection.MaxAvgSendAttempts"/>. Also updates the stored default for future connections.</summary>
+        public abstract int MaxAvgSendAttempts { set; }
+        /// <summary>Sets the relevant connections' <see cref="Connection.AvgSendAttemptsResilience"/>. Also updates the stored default for future connections.</summary>
+        public abstract int AvgSendAttemptsResilience { set; }
+        /// <summary>Sets the relevant connections' <see cref="Connection.MaxSendAttempts"/>. Also updates the stored default for future connections.</summary>
+        public abstract int MaxSendAttempts { set; }
+        /// <summary>Sets the relevant connections' <see cref="Connection.MaxNotifyLoss"/>. Also updates the stored default for future connections.</summary>
+        public abstract float MaxNotifyLoss { set; }
+        /// <summary>Sets the relevant connections' <see cref="Connection.NotifyLossResilience"/>. Also updates the stored default for future connections.</summary>
+        public abstract int NotifyLossResilience { set; }
         /// <summary>The interval (in milliseconds) at which to send and expect heartbeats to be received.</summary>
         /// <remarks>Changes to this value will only take effect after the next heartbeat is executed.</remarks>
         public int HeartbeatInterval { get; set; } = 1000;
@@ -76,6 +86,16 @@ namespace Riptide
         protected bool useMessageHandlers;
         /// <summary>The default time (in milliseconds) after which to disconnect if no heartbeats are received.</summary>
         protected int defaultTimeout = 5000;
+        /// <summary>The default maximum acceptable average number of send attempts applied to new connections.</summary>
+        internal int defaultMaxAvgSendAttempts = 5;
+        /// <summary>The default number of consecutive violations before a quality disconnect fires, applied to new connections.</summary>
+        internal int defaultAvgSendAttemptsResilience = 64;
+        /// <summary>The default absolute maximum send attempts per reliable message applied to new connections.</summary>
+        internal int defaultMaxSendAttempts = 15;
+        /// <summary>The default maximum acceptable notify loss rate applied to new connections.</summary>
+        internal float defaultMaxNotifyLoss = 0.05f;
+        /// <summary>The default number of consecutive loss-rate violations before a quality disconnect fires, applied to new connections.</summary>
+        internal int defaultNotifyLossResilience = 64;
 
         /// <summary>A stopwatch used to track how much time has passed.</summary>
         private readonly System.Diagnostics.Stopwatch time = new System.Diagnostics.Stopwatch();

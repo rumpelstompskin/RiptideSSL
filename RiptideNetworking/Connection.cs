@@ -146,6 +146,11 @@ namespace Riptide
         {
             Peer = peer;
             TimeoutTime = timeoutTime;
+            MaxAvgSendAttempts = peer.defaultMaxAvgSendAttempts;
+            AvgSendAttemptsResilience = peer.defaultAvgSendAttemptsResilience;
+            MaxSendAttempts = peer.defaultMaxSendAttempts;
+            MaxNotifyLoss = peer.defaultMaxNotifyLoss;
+            NotifyLossResilience = peer.defaultNotifyLossResilience;
         }
 
         /// <summary>Resets the connection's timeout time.</summary>
@@ -275,7 +280,10 @@ namespace Riptide
             {
                 sendAttemptsViolations++;
                 if (sendAttemptsViolations >= AvgSendAttemptsResilience)
+                {
+                    RiptideLogger.Log(LogType.Info, Peer.LogName, $"Connection {this} average send attempts ({Metrics.RollingReliableSends.Mean:F2}) exceeded limit of {MaxAvgSendAttempts} for {sendAttemptsViolations} consecutive messages! Disconnecting...");
                     Peer.Disconnect(this, DisconnectReason.PoorConnection);
+                }
             }
             else
                 sendAttemptsViolations = 0;
@@ -288,7 +296,10 @@ namespace Riptide
             {
                 lossRateViolations++;
                 if (lossRateViolations >= NotifyLossResilience)
+                {
+                    RiptideLogger.Log(LogType.Info, Peer.LogName, $"Connection {this} notify loss rate ({Metrics.RollingNotifyLossRate:P1}) exceeded limit of {MaxNotifyLoss:P1} for {lossRateViolations} consecutive samples! Disconnecting...");
                     Peer.Disconnect(this, DisconnectReason.PoorConnection);
+                }
             }
             else
                 lossRateViolations = 0;
