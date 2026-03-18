@@ -1,6 +1,6 @@
 # RiptideSSL — TLS TCP Transport for Riptide Networking
 
-**Version:** `2.2.1-TLSv1.2`
+**Version:** `2.2.1-TLSv1.2a`
 **Date:** 2026-03-17
 **License:** MIT
 **Extensions by:** Rumpelstompskin (TLS transport, NetworkManager)
@@ -11,6 +11,21 @@
 ## Overview
 
 RiptideSSL is a TLS-encrypted TCP transport plugin for [Riptide Networking](https://riptide.tomweiland.net/). It wraps the standard `SslStream` API to provide drop-in TLS support for Riptide's TCP layer, targeting `netstandard2.0` for full Unity/Mono compatibility.
+
+---
+
+## What's New in TLSv1.2a
+
+### Global quality-disconnect threshold configuration
+- `Peer` exposes five new abstract write-only properties — `MaxAvgSendAttempts`, `AvgSendAttemptsResilience`, `MaxSendAttempts`, `MaxNotifyLoss`, `NotifyLossResilience` — following the same pattern as the existing `TimeoutTime` setter
+- `Server` implementations propagate each value to all currently connected clients in addition to storing the new default for future connections
+- `Client` implementations update the live connection if one exists
+- `Connection.Initialize()` now reads all five quality defaults from the `Peer` at connect time, so any pre-start configuration on `Server` or `Client` is automatically applied to every new connection without requiring a `ClientConnected` event handler
+
+### Diagnostic logging for quality-disconnect triggers
+- `Connection.UpdateSendAttemptsViolations()` now logs the rolling mean, the configured limit, and the consecutive violation count before disconnecting — previously this path was silent
+- `Connection.UpdateLossViolations()` now logs the rolling loss rate, the configured limit, and the consecutive violation count before disconnecting — previously this path was also silent
+- Both log lines use `LogType.Info` and include the connection endpoint, matching the style of the existing `PendingMessage` log
 
 ---
 
