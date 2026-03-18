@@ -28,12 +28,18 @@ Call `Initialize(basePath)` on the transport before starting the server. This cr
 TcpServer transport = new TcpServer();
 transport.Initialize(Application.dataPath); // Unity: pass Application.dataPath
 
+// Optional: tune connection and handshake capacity before Start()
+transport.MaxPendingConnections = 2048;    // TCP kernel backlog (default: 512)
+transport.MaxConcurrentHandshakes = 64;   // Concurrent TLS handshakes (default: 32)
+
 if (transport.CertificateValidated)
 {
     server = new Server(transport);
     server.Start(port, maxClients);
 }
 ```
+
+`MaxPendingConnections` controls how many unaccepted TCP connections the OS kernel will queue. For servers expecting large simultaneous connection bursts (e.g. 1000+ clients reconnecting at once), set this higher than the expected peak. `MaxConcurrentHandshakes` limits how many TLS handshakes run in parallel — excess connections queue and proceed as slots free up, so increasing this speeds up burst handling at the cost of more CPU/thread pressure.
 
 ---
 

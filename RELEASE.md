@@ -1,7 +1,7 @@
 # RiptideSSL — TLS TCP Transport for Riptide Networking
 
-**Version:** `2.2.1-TLSv1.1a`
-**Date:** 2026-03-14
+**Version:** `2.2.1-TLSv1.2`
+**Date:** 2026-03-17
 **License:** MIT
 **Extensions by:** Rumpelstompskin (TLS transport, NetworkManager)
 **Built on:** [Riptide Networking](https://riptide.tomweiland.net/) by Tom Weiland
@@ -14,27 +14,58 @@ RiptideSSL is a TLS-encrypted TCP transport plugin for [Riptide Networking](http
 
 ---
 
-## What's New in TLSv1.1a
+## What's New in TLSv1.2
 
-### NetworkManager
-- New static `NetworkManager` class providing global access to the active network role and peer instances
-- `Server` and `Client` instances register themselves automatically on construction — no manual setup required
-- `NetworkManager.Server` is cleared to `null` automatically when `Server.Stop()` is called
-- `NetworkManager.Client` is cleared to `null` automatically when the client disconnects for any reason
-- `IsServer` — `true` when a `Server` instance exists and `IsRunning` is `true`
-- `IsClient` — `true` when a `Client` instance exists and is connecting, pending, or connected
-- `Mode` — returns a `NetworkMode` value for use in switch statements
-- `Server` and `Client` instance references accessible globally
+### Zero-allocation send/receive (ArrayPool)
+- Send path now rents a frame buffer from `ArrayPool<byte>.Shared` instead of writing into a shared `SendBuffer`, then returns it in a `finally` block — eliminates per-send heap allocation and removes the shared buffer from `TcpPeer`
+- Receive path enqueues a `RentedSegment` struct (rented buffer + length) instead of allocating a `new byte[]` per message; buffers are returned to the pool after processing or on connection close
+- Added `System.Buffers 4.5.1` package reference to support `ArrayPool` on all target frameworks
 
-### NetworkMode
-- New `NetworkMode` enum with `Server` and `Client` values
+### Message pool — Stack instead of List
+- `Message` and `PendingMessage` internal pools changed from `List<T>` to `Stack<T>`
+- `RemoveAt(0)` (O(n) shift) replaced by `Pop()` (O(1))
+- `pool.Contains(this)` duplicate guard (O(n) scan) replaced by an `_inPool` bool flag (O(1))
+- `Message` gains an explicit `_maxPoolSize` field since `Stack<T>` has no `Capacity` property
 
-### Build Output
-- Build output organized by version: `bin/Debug/2.2.1-TLSv1.1a/` and `bin/Release/2.2.1-TLSv1.1a/`
+### Poll-path skip when idle
+- `TcpConnection` adds a `_hasPendingMessages` volatile int flag (0/1) set by the background receive loop and cleared at the start of each `Receive()` drain
+- `TcpServer.Poll()` skips calling `Receive()` on connections where the flag is not set, eliminating unnecessary ConcurrentQueue checks on quiet connections each tick
+
+### Handshake concurrency control
+- New `MaxConcurrentHandshakes` property on `TcpServer` (default: `32`) backed by a `SemaphoreSlim`
+- Each background TLS handshake task waits on the semaphore before starting, preventing ThreadPool saturation during connection bursts
+- Excess connections queue inside the semaphore and proceed as slots free — throughput is not lost, only parallelism is capped
+- Semaphore is created in `Start()` and disposed in `Shutdown()`
+
+### Increased default connection backlog
+- `MaxPendingConnections` default raised from `5` to `512`
+- Both `MaxPendingConnections` and `MaxConcurrentHandshakes` are public settable properties — override them before calling `Start()` for your target scale
+
+### Thread-safety fix for closedConnections
+- `TcpServer.closedConnections` changed from `List<IPEndPoint>` to `ConcurrentQueue<IPEndPoint>`
+- `Close()` and `OnDisconnected()` (called from background threads) now safely enqueue without locking
+- `Poll()` drains the queue with `TryDequeue` in a `while` loop, replacing the previous `foreach` + `Clear()` pattern
 
 ---
 
-## Public API Summary
+## Public API Changes
+
+### `TcpServer` — new properties
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `MaxPendingConnections` | `int` | `512` | TCP kernel backlog passed to `socket.Listen()`. Set before `Start()`. |
+| `MaxConcurrentHandshakes` | `int` | `32` | Max parallel TLS handshakes. Set before `Start()`. |
+
+### `TcpPeer` — removed
+
+| Member | Reason |
+|---|---|
+| `SendBuffer` | Replaced by per-call `ArrayPool<byte>.Shared.Rent()` in `TcpConnection` |
+
+---
+
+## Full API Summary
 
 ### `NetworkManager` (static)
 
@@ -57,7 +88,8 @@ RiptideSSL is a TLS-encrypted TCP transport plugin for [Riptide Networking](http
 | `CERT_PW` | Cert password from config |
 | `EnabledSslProtocols` | SSL protocols allowed (default: Tls12) |
 | `RequireClientCertificate` | Enable mTLS |
-| `MaxPendingConnections` | TCP backlog size |
+| `MaxPendingConnections` | TCP backlog size (default: 512) |
+| `MaxConcurrentHandshakes` | Concurrent TLS handshake limit (default: 32) |
 
 ### `TcpClient`
 
@@ -86,7 +118,7 @@ RiptideSSL is a TLS-encrypted TCP transport plugin for [Riptide Networking](http
 | Target framework | `netstandard2.0` |
 | Unity/Mono | Compatible (legacy PFX format required — see README) |
 | Language version | C# 11 |
-| Dependency | `Newtonsoft.Json 13.0.4` |
+| Dependencies | `Newtonsoft.Json 13.0.4`, `System.Buffers 4.5.1` |
 
 ---
 
@@ -94,3 +126,4 @@ RiptideSSL is a TLS-encrypted TCP transport plugin for [Riptide Networking](http
 
 - PFX must use legacy SHA-1/3DES container (OpenSSL `-legacy` flag) for Mono/Unity compatibility
 - `TcpClient.Connect()` blocks the calling thread — always call from `Task.Run()`
+- `MaxPendingConnections` and `MaxConcurrentHandshakes` must be set before `Start()` — changing them after has no effect on the running server
